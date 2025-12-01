@@ -20,6 +20,7 @@ package GADS::Column::Enum;
 
 use Log::Report 'linkspace';
 
+use GADS::Audit qw (field_update);
 use HTML::Entities qw/encode_entities/;
 use Moo;
 use MooX::Types::MooseLike::Base qw/ArrayRef HashRef/;
@@ -171,8 +172,14 @@ sub write_special
     my $id           = $options{id};
     my $rset         = $options{rset};
     my $enum_mapping = $options{enum_mapping};
+    
+    my $colname      = $self->name;
+    my $layout_name  = $self->layout->name;
+    my $username     = $options{user}->username;
+    my $audit        = GADS::Audit->new(schema => $self->schema, user => $options{user});
 
     my $position;
+    my $updated;
     foreach my $en (@{$self->enumvals})
     {
         my $value = $en->{value};
@@ -185,6 +192,11 @@ sub write_special
             my $enumval = $options{create_missing_id}
                 ? $self->schema->resultset('Enumval')->find_or_create({ id => $en->{id}, layout_id => $id })
                 : $self->schema->resultset('Enumval')->find($en->{id});
+            
+            my $old = $enumval->{_column_data}->{value};
+            $updated .= sprintf(' [Position %s => %s]', $en->{position} || $position, $value)
+                unless $value eq $old;
+
             $enumval or error __x"Bad ID {id} for multiple select update", id => $en->{id};
             $enumval->update({ value => $en->{value}, position => $en->{position} || $position });
         }
@@ -199,6 +211,10 @@ sub write_special
         $enum_mapping->{$en->{source_id}} = $en->{id}
             if $enum_mapping && $en->{source_id};
     }
+    my $description = qq(User "$username" updated dropdown list for field "$colname" in table "$layout_name": );
+    $description .= $updated if defined $updated;
+    $audit->field_update(description => $description, method => 'POST')
+        if defined $updated;
 
     # Then delete any that no longer exist
     $self->_delete_unused_nodes;

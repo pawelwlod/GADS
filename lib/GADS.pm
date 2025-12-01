@@ -91,6 +91,8 @@ use Dancer2::Plugin::LogReport 'linkspace';
 
 use GADS::API; # API routes
 
+use List::Compare ();
+
 # YAML needs to save and load blessed objects for the sessio serializer (for
 # the notification messages). Since YAML 1.25 this is disabled by default, so
 # turn it on
@@ -3028,10 +3030,10 @@ prefix '/:layout_name' => sub {
     # any ['get', 'post'] => qr{/tree[0-9]*/([0-9]*)/?} => require_login sub {
     any ['get', 'post'] => '/tree:any?/:layout_id/?' => require_login sub {
         # Random number can be used after "tree" to prevent caching
-
+        
+        my $user        = logged_in_user;
         my $layout      = var('layout') or pass;
-        my ($layout_id) = splat;
-        $layout_id = route_parameters->get('layout_id');
+        my $layout_id   = route_parameters->get('layout_id');
 
         my $tree = $layout->column($layout_id)
             or error __x"Invalid tree ID {id}", id => $layout_id;
@@ -3043,7 +3045,7 @@ prefix '/:layout_name' => sub {
                 unless $layout->user_can("layout");
 
             my $newtree = JSON->new->utf8(0)->decode(param 'data');
-            $tree->update($newtree);
+            $tree->update($newtree, $user);
             return;
         }
         my @ids  = query_parameters->get_all('ids');
@@ -3713,7 +3715,12 @@ prefix '/:layout_name' => sub {
 
             if (param 'submit')
             {
-
+                my $colname     = param('name');
+                my $layout_name = $layout->name;
+                my $audit       = GADS::Audit->new(schema => schema, user => $user);
+                my $groups      = GADS::Groups->new(schema => schema);
+                my $username    = $user->username;
+                
                 my @permission_params = grep { /^permission_(?:.*?)_\d+$/ } keys %{ params() };
 
                 my %permissions;
@@ -3723,8 +3730,46 @@ prefix '/:layout_name' => sub {
                     push @{ $permissions{$group_id} ||= [] }, $name;
                 }
 
-                $column->set_permissions(\%permissions);
+                my @updated_perms;
+                if (param('id'))
+                {
+                    while (my ($group_id, $perm_names) = each %permissions)
+                    {
+                        my $group_name = $groups->group($group_id)->name;
+                        my @group_perms;
 
+                        my @existing_permissions = $column->schema->resultset('LayoutGroup')->search({
+                            layout_id  => param('id'),
+                            group_id   => $group_id,
+                        })->get_column('permission')->all;  
+
+                        my $lc                  = List::Compare->new($perm_names, \@existing_permissions);
+                        my @removed_permissions = grep { $_ !~ /no_approval/ } $lc->get_complement();
+                        my @added_permissions   = $lc->get_unique();    
+
+                        if (@removed_permissions || @added_permissions)
+                        {
+                            foreach my $perm (@{$perm_names}) 
+                            {
+                                push @group_perms, 'read' 
+                                    if $perm eq 'read';
+                                push @group_perms, 'write' 
+                                    if $perm eq 'write_new';
+                                push @group_perms, 'update' 
+                                    if $perm eq 'write_existing';
+                            }
+                            push @updated_perms, sprintf('[%s: %s]', $group_name, join(', ', sort @group_perms));
+                        }
+                    }
+                }
+                my $description = qq(User "$username" updated permissions for field "$colname" in table "$layout_name": );
+                $description .= join(' ', @updated_perms)
+                    if @updated_perms;
+                $audit->field_update(description => $description, method => request->method)
+                    if @updated_perms;
+                
+                $column->set_permissions(\%permissions);
+            
                 $column->$_(param $_)
                     foreach (qw/name name_short description helptext optional isunique set_can_child
                         multivalue remember link_parent_id topic_id width aggregate group_display/);
@@ -3799,7 +3844,7 @@ prefix '/:layout_name' => sub {
                 }
 
                 my $no_cache_update = $column->type eq 'rag' ? param('no_cache_update_rag') : param('no_cache_update_calc');
-                if (process( sub { $column->write(no_alerts => $no_alerts, no_cache_update => $no_cache_update) }))
+                if (process( sub { $column->write(user => $user, no_alerts => $no_alerts, no_cache_update => $no_cache_update) }))
                 {
                     my $msg = param('id')
                         ? qq(Your field has been updated successfully)

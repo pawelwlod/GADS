@@ -21,6 +21,7 @@ package GADS::Column;
 use JSON qw(decode_json encode_json);
 use Log::Report 'linkspace';
 use String::CamelCase qw(camelize);
+use GADS::Audit qw (field_update);
 use GADS::DB;
 use GADS::Filter;
 use GADS::Groups;
@@ -1253,6 +1254,10 @@ sub write
     unless ($options{report_only})
     {
         my $old_rset;
+        my $colname     = $self->name;
+        my $layout_name = $self->layout->name;
+        my $username    = $options{user}->username;
+        my $audit       = GADS::Audit->new(schema => $self->schema, user => $options{user});
         if (!$self->id)
         {
             $newitem->{id} = $self->set_id if $self->set_id;
@@ -1274,6 +1279,23 @@ sub write
                     and panic "Attempt to move column between instances";
                 $old_rset = {$rset->get_columns};
                 $rset->update($newitem);
+
+                my $updated;
+                my $newcols = $rset->{_column_data};
+                while (my ($col, $new) = each %$newcols) {
+                    
+                    my $old = $old_rset->{$col};
+                    next unless $old || $new;
+                    next if $old && $new && $old eq $new;
+
+                    $updated .= sprintf(' [%s => %s]', $col, $new);
+                }
+                if (defined $updated)
+                {                  
+                    my $description = qq(User "$username" updated field "$colname" in table "$layout_name": );
+                    $description .= $updated;
+                    $audit->field_update(description => $description, method => 'POST');
+                }
             }
             else {
                 $newitem->{id} = $self->id;
@@ -1290,6 +1312,8 @@ sub write
     $self->_write_permissions(id => $new_id || $self->id, %options);
 
     # Write display_fields
+    my $pre_display_fields = $self->display_fields_summary 
+        if $self->display_fields;
     my $display_rs = $self->schema->resultset('DisplayField');
     $display_rs->search({ layout_id => $self->id })->delete
         if $self->id;
@@ -1302,7 +1326,26 @@ sub write
             operator         => $cond->{operator},
         });
     }
+    my $new_display_fields = $self->display_fields_summary 
+        if defined $self->display_fields;
 
+    my $arrstr_first = join(",", sort(@$pre_display_fields)) 
+        if $pre_display_fields;
+    my $arrstr_second = join(",", sort(@$new_display_fields))  
+        if $new_display_fields;
+    
+    if ($arrstr_first && $arrstr_second && $arrstr_first ne $arrstr_second)
+    {
+        my $colname     = $self->name;
+        my $layout_name = $self->layout->name;
+        my $username    = $options{user}->username;
+        my $audit       = GADS::Audit->new(schema => $self->schema, user => $options{user});
+
+        my $description = qq(User "$username" updated display conditions for field "$colname" in table "$layout_name": );
+        $description .= sprintf(' From [%s => %s]', @$pre_display_fields[0], @$pre_display_fields[1]);
+        $description .= sprintf(' To [%s => %s]', @$new_display_fields[0], @$new_display_fields[1]);
+        $audit->field_update(description => $description, method => 'POST');
+    }
     $guard->commit;
 
     return if $options{report_only};

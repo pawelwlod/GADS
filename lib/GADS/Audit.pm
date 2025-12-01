@@ -70,7 +70,7 @@ has filtering => (
     builder => sub { +{} },
 );
 
-sub audit_types{ [qw/user_action login_change login_success logout login_failure/] };
+sub audit_types{ [qw/user_action login_change login_success logout login_failure field_update/] };
 
 sub user_action
 {   my ($self, %options) = @_;
@@ -126,6 +126,18 @@ sub login_failure
     $self->schema->resultset('Audit')->create({
         description => "Login failure using username $username",
         type        => 'login_failure',
+        datetime    => DateTime->now,
+    });
+}
+
+sub field_update
+{   my ($self, %options) = @_;
+
+    $self->schema->resultset('Audit')->create({
+        user_id     => $self->user_id,
+        description => $options{description},
+        type        => 'field_update',
+        method      => $options{method},
         datetime    => DateTime->now,
     });
 }

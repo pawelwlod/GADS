@@ -21,11 +21,13 @@ package GADS::Column::Code;
 use DateTime;
 use Date::Holidays::GB qw/ is_gb_holiday gb_holidays /;
 use GADS::AlertSend;
+use GADS::Audit qw (field_update);
 use JSON qw(decode_json encode_json);
 use Log::Report 'linkspace';
 use MIME::Base64 qw/encode_base64/;
 use Moo;
 use MooX::Types::MooseLike::Base qw/Str/;
+use Text::Diff;
 
 use Inline 'Lua' => q{
     function lua_run(string, vars, working_days_diff, working_days_add)
@@ -389,6 +391,51 @@ sub eval
     }
 }
 
+sub compare
+{
+    my ($self, $old, $new) = @_;
+
+    return unless $old && $new;
+    $old =~ s/\r\n/\n/g;
+    $new =~ s/\r\n/\n/g;
+
+    my $diff         = diff \$old, \$new, { STYLE => 'Unified' };
+    my $output       = '';
+    my $checkChanged = 0;
+    my $oldLine      = "";
+
+    for my $line ( split /\n/, $diff ) 
+    {
+        if ( $line =~ /^\+/ ) 
+        {
+            if ($checkChanged) 
+            {
+                $output .= "Changed `"
+                  . substr( $oldLine, 1 ) . "` to `"
+                  . substr( $line,    1 ) . "`\n";
+                $checkChanged = 0;
+            }
+            else {
+                $output .= "Added `" . substr( $line, 1 ) . "`\n";
+            }
+        }
+        elsif ( $line =~ /^-/ ) {
+            if ($checkChanged) 
+            {
+                $output .= "Removed `" . substr( $oldLine, 1 ) . "`\n";
+            }
+            $checkChanged = 1;
+            $oldLine      = $line;
+        }
+        elsif ( $line =~ /^\s/ ) {
+            # Ignore.
+        }
+        $output .= "Removed " . substr( $oldLine, 1 ) . "\n"
+            if $checkChanged;
+    }
+    $output;
+}
+
 sub write_special
 {   my ($self, %options) = @_;
 
@@ -407,6 +454,17 @@ sub write_special
     $self->code =~ /(.....[^\x00-\x7F]+.....)/
         and error __x"Extended characters are not supported in calculated fields (found here: {here})",
             here => $1;
+
+    my $colname     = $self->name;
+    my $layout_name = $self->layout->name;
+    my $username    = $options{user}->username;
+    my $audit       = GADS::Audit->new(schema => $self->schema, user => $options{user});
+    my $description = qq(User "$username" updated calc/rag for field "$colname" in table "$layout_name": );
+    my $compare_log = $self->compare($self->_rset_code->code, $self->code);
+
+    $description .= $compare_log if $compare_log;
+    $audit->field_update(description => $description, method => 'POST')
+        if $compare_log;
 
     my %return_options;
     my $changed = $self->write_code($id, %options); # Returns true if anything relevant changed

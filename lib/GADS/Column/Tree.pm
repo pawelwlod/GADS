@@ -26,6 +26,8 @@ use Tree::DAG_Node;
 use Moo;
 use MooX::Types::MooseLike::Base qw/Bool HashRef ArrayRef/;
 
+use GADS::Audit qw (field_update);
+
 extends 'GADS::Column';
 
 with 'GADS::Role::Presentation::Column::Tree';
@@ -419,8 +421,16 @@ sub random
     $value;
 }
 
+has is_updated => (
+    is => 'rw',
+);
+
 sub update
-{   my ($self, $tree, %params) = @_;
+{   my ($self, $tree, $user, %params) = @_;
+    my $colname          = $self->name;
+    my $layout_name      = $self->layout->name;
+    my $username         = $user->username;
+    my $audit            = GADS::Audit->new(schema => $self->schema, user => $user);
 
     # Create a new hash ref with our new tree structure in. We'll copy
     # the new nodes into it as we go, and then compare it to the old
@@ -432,6 +442,10 @@ sub update
     {
         $self->_update($t, $new_tree, %params);
     }
+
+    my $description = qq(User "$username" updated tree for field "$colname" in table "$layout_name".);
+    $audit->field_update(description => $description, method => 'POST') and $self->is_updated(0)
+        if $self->is_updated && $self->is_updated == 1;
 
     $self->_set__enumvals_index($new_tree);
     $self->_delete_unused_nodes;
@@ -464,6 +478,8 @@ sub _update
 
             $enum_mapping->{$source_id} = $t->{id}
                 if $enum_mapping;
+            
+            $self->is_updated(1);
         }
         $new_tree->{$dbt->{id}} = $dbt;
     }
@@ -481,6 +497,8 @@ sub _update
         $enum_mapping->{$source_id} = $id
             # source_id not set when more new values than old values
             if $enum_mapping && $source_id;
+        
+        $self->is_updated(1);
     }
 
     foreach my $child (@{$t->{children}})
