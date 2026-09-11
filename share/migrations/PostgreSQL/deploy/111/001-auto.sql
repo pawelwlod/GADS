@@ -1,6 +1,6 @@
 --
 -- Created by SQL::Translator::Producer::PostgreSQL
--- Created on Fri Jun 19 12:19:13 2026
+-- Created on Wed May  6 08:58:15 2026
 --
 ;
 --
@@ -381,6 +381,18 @@ CREATE INDEX "file_idx_layout_id" on "file" ("layout_id");
 CREATE INDEX "file_idx_purged_by" on "file" ("purged_by");
 CREATE INDEX "file_idx_record_id" on "file" ("record_id");
 CREATE INDEX "file_idx_value" on "file" ("value");
+
+;
+--
+-- Table: file_option
+--
+CREATE TABLE "file_option" (
+  "id" serial NOT NULL,
+  "layout_id" integer NOT NULL,
+  "filesize" integer,
+  PRIMARY KEY ("id")
+);
+CREATE INDEX "file_option_idx_layout_id" on "file_option" ("layout_id");
 
 ;
 --
@@ -941,6 +953,7 @@ CREATE TABLE "site" (
   "account_request_notes_placeholder" text,
   "security_marking" text,
   "site_logo" bytea,
+  "force_mfa" character(3),
   PRIMARY KEY ("id")
 );
 
@@ -1072,6 +1085,18 @@ CREATE TABLE "user" (
   "stylesheet" text,
   "created" timestamp,
   "debug_login" smallint DEFAULT 0,
+  "mfa_type" character(3),
+  "mobile" text,
+  "mobile_verified" smallint DEFAULT 0 NOT NULL,
+  "mfa_secret" text,
+  "mfa_sms_token" text,
+  "mfa_sms_created" timestamp,
+  "mfa_token_previous" text,
+  "mfa_token_previous_type" character(3),
+  "mfa_token_previous_used" timestamp,
+  "mfa_token_previous_key" text,
+  "mfa_lastfail" timestamp,
+  "mfa_failcount" integer DEFAULT 0 NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE INDEX "user_idx_department_id" on "user" ("department_id");
@@ -1462,6 +1487,10 @@ ALTER TABLE "file" ADD CONSTRAINT "file_fk_record_id" FOREIGN KEY ("record_id")
 ;
 ALTER TABLE "file" ADD CONSTRAINT "file_fk_value" FOREIGN KEY ("value")
   REFERENCES "fileval" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION DEFERRABLE;
+
+;
+ALTER TABLE "file_option" ADD CONSTRAINT "file_option_fk_layout_id" FOREIGN KEY ("layout_id")
+  REFERENCES "layout" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION DEFERRABLE;
 
 ;
 ALTER TABLE "fileval" ADD CONSTRAINT "fileval_fk_edit_user_id" FOREIGN KEY ("edit_user_id")

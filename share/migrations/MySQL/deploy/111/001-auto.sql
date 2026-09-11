@@ -1,6 +1,6 @@
 --
 -- Created by SQL::Translator::Producer::MySQL
--- Created on Fri Jun 19 12:19:13 2026
+-- Created on Wed May  6 08:58:14 2026
 --
 ;
 SET foreign_key_checks=0;
@@ -397,6 +397,17 @@ CREATE TABLE `file` (
   CONSTRAINT `file_fk_purged_by` FOREIGN KEY (`purged_by`) REFERENCES `user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `file_fk_record_id` FOREIGN KEY (`record_id`) REFERENCES `record` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `file_fk_value` FOREIGN KEY (`value`) REFERENCES `fileval` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB;
+--
+-- Table: `file_option`
+--
+CREATE TABLE `file_option` (
+  `id` integer NOT NULL auto_increment,
+  `layout_id` integer NOT NULL,
+  `filesize` integer NULL,
+  INDEX `file_option_idx_layout_id` (`layout_id`),
+  PRIMARY KEY (`id`),
+  CONSTRAINT `file_option_fk_layout_id` FOREIGN KEY (`layout_id`) REFERENCES `layout` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB;
 --
 -- Table: `fileval`
@@ -964,6 +975,7 @@ CREATE TABLE `site` (
   `account_request_notes_placeholder` text NULL,
   `security_marking` text NULL,
   `site_logo` longblob NULL,
+  `force_mfa` char(3) NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB;
 --
@@ -1091,6 +1103,18 @@ CREATE TABLE `user` (
   `stylesheet` text NULL,
   `created` datetime NULL,
   `debug_login` smallint NULL DEFAULT 0,
+  `mfa_type` char(3) NULL,
+  `mobile` text NULL,
+  `mobile_verified` smallint NOT NULL DEFAULT 0,
+  `mfa_secret` text NULL,
+  `mfa_sms_token` text NULL,
+  `mfa_sms_created` datetime NULL,
+  `mfa_token_previous` text NULL,
+  `mfa_token_previous_type` char(3) NULL,
+  `mfa_token_previous_used` datetime NULL,
+  `mfa_token_previous_key` text NULL,
+  `mfa_lastfail` datetime NULL,
+  `mfa_failcount` integer NOT NULL DEFAULT 0,
   INDEX `user_idx_department_id` (`department_id`),
   INDEX `user_idx_lastrecord` (`lastrecord`),
   INDEX `user_idx_lastview` (`lastview`),

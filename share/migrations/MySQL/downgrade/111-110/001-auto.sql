@@ -1,23 +1,24 @@
--- Convert schema '/home/pwlodarski/src/GADS/bin/../share/migrations/_source/deploy/111/001-auto.yml' to '/home/pwlodarski/src/GADS/bin/../share/migrations/_source/deploy/110/001-auto.yml':;
+-- Convert schema '/home/abeverley/git/GADS/bin/../share/migrations/_source/deploy/111/001-auto.yml' to '/home/abeverley/git/GADS/bin/../share/migrations/_source/deploy/110/001-auto.yml':;
 
 ;
 BEGIN;
 
 ;
-SET foreign_key_checks=0;
+ALTER TABLE site DROP COLUMN force_mfa;
 
 ;
-CREATE TABLE `file_option` (
-  `id` integer NOT NULL auto_increment,
-  `layout_id` integer NOT NULL,
-  `filesize` integer NULL,
-  INDEX `file_option_idx_layout_id` (`layout_id`),
-  PRIMARY KEY (`id`),
-  CONSTRAINT `file_option_fk_layout_id` FOREIGN KEY (`layout_id`) REFERENCES `layout` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB;
-
-;
-SET foreign_key_checks=1;
+ALTER TABLE user DROP COLUMN mfa_type,
+                 DROP COLUMN mobile,
+                 DROP COLUMN mobile_verified,
+                 DROP COLUMN mfa_secret,
+                 DROP COLUMN mfa_sms_token,
+                 DROP COLUMN mfa_sms_created,
+                 DROP COLUMN mfa_token_previous,
+                 DROP COLUMN mfa_token_previous_type,
+                 DROP COLUMN mfa_token_previous_used,
+                 DROP COLUMN mfa_token_previous_key,
+                 DROP COLUMN mfa_lastfail,
+                 DROP COLUMN mfa_failcount;
 
 ;
 
